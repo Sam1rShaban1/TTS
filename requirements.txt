@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-multipart
+edge-tts
+PyMuPDF
+python-docx
+python-pptx
+aiofiles
+langdetect
+litellm
+python-dotenv

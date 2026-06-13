@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doc-to-Speech</title>
+    <style>
+        :root {
+            --canvas: #f1f2f3;
+            --carbon: #111111;
+            --white: #ffffff;
+            --graphite: #2d2d2d;
+            --stone: #dddddd;
+            --silver: #b4b4b4;
+            --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; overflow: hidden; }
+        body {
+            background: var(--canvas);
+            font-family: var(--font);
+            font-weight: 700;
+            color: var(--carbon);
+        }
+
+        /* --- 3D Stage (full background) --- */
+        #stage {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+        }
+        #three-canvas { width: 100%; height: 100%; display: block; }
+
+        /* --- Floating Card (bottom center) --- */
+        .floating-card {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 30vw;
+            min-width: 340px;
+            max-width: 500px;
+            height: auto;
+            min-height: 0;
+            background: var(--white);
+            border-radius: 25px;
+            box-shadow:
+                0 0 60px rgba(17,17,17,0.10),
+                0 0 120px rgba(17,17,17,0.06),
+                0 4px 30px rgba(17,17,17,0.12);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .floating-card.hidden-state {
+            opacity: 0;
+            transform: translateX(-50%) translateY(20px);
+            pointer-events: none;
+        }
+
+        .card-inner {
+            display: flex;
+            flex-direction: column;
+            padding: 16px 20px 20px;
+        }
+
+        /* --- Upload Zone (clean, no border) --- */
+        .drop-zone {
+            padding: 8px 0;
+            text-align: center;
+            cursor: pointer;
+            transition: opacity 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+        .drop-zone:hover { opacity: 0.7; }
+        .drop-zone p {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: -0.016em;
+        }
+        .drop-zone .hint {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--silver);
+        }
+
+        /* --- Text Overlay (on vinyl) --- */
+        .text-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 5;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(241,242,243,0.5);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            opacity: 0;
+            transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                        background 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .text-overlay.visible {
+            display: flex;
+            opacity: 1;
+        }
+        .text-overlay.collapsed-bg {
+            align-items: flex-end;
+            padding-bottom: 30px;
+            background: transparent;
+            backdrop-filter: blur(0px);
+            -webkit-backdrop-filter: blur(0px);
+            pointer-events: none;
+        }
+        .text-overlay.collapsed-bg .text-panel {
+            pointer-events: auto;
+        }
+
+        .text-panel {
+            width: 70vw;
+            max-width: 900px;
+            height: 75vh;
+            background: rgba(255,255,255,0.88);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-radius: 25px;
+            padding: 28px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 8px 60px rgba(17,17,17,0.15);
+            border: 1px solid rgba(255,255,255,0.6);
+            overflow: hidden;
+            opacity: 0;
+            transform: scale(0.95) translateY(30px);
+            transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+                        opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                        width 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+                        height 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+                        padding 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                        border-radius 0.4s ease,
+                        box-shadow 0.4s ease,
+                        background 0.3s ease;
+        }
+        .text-overlay.visible .text-panel {
+            transform: scale(1) translateY(0);
+            opacity: 1;
+        }
+        .text-overlay.collapsed-bg .text-panel {
+            width: 350px;
+            height: 56px;
+            min-height: 0;
+            max-height: 56px;
+            padding: 12px 24px;
+            cursor: pointer;
+            transform: scale(1) translateY(0);
+            opacity: 1;
+            box-shadow: 0 4px 30px rgba(17,17,17,0.12);
+            background: rgba(255,255,255,0.95);
+            border-radius: 25px;
+        }
+        .text-overlay.collapsed-bg .text-panel:hover {
+            box-shadow: 0 6px 40px rgba(17,17,17,0.18);
+        }
+        .text-overlay:not(.visible) .text-panel {
+            transform: scale(0.95) translateY(30px);
+            opacity: 0;
+        }
+
+        .text-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .text-panel.collapsed .text-panel-header { margin-bottom: 0; }
+        .text-panel-header .section-label { margin: 0; }
+
+        .text-collapsed-bar {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--graphite);
+        }
+        .text-overlay.collapsed-bg .text-collapsed-bar { display: flex; }
+        .text-overlay.collapsed-bg .text-panel-header > *:not(.text-collapsed-bar) { display: none; }
+        .text-overlay.collapsed-bg .text-editor,
+        .text-overlay.collapsed-bg .text-meta,
+        .text-overlay.collapsed-bg .text-actions,
+        .text-overlay.collapsed-bg .card-output { display: none; }
+        .text-collapsed-bar .ldot { width: 5px; height: 5px; border-radius: 50%; background: var(--carbon); }
+
+        .text-editor {
+            flex: 1;
+            width: 100%;
+            min-height: 200px;
+            border: 1px solid var(--stone);
+            border-radius: 1.5px;
+            padding: 12px;
+            font-family: var(--font);
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 1.25;
+            color: var(--carbon);
+            background: rgba(255,255,255,0.6);
+            resize: none;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .text-editor:focus { border-color: var(--carbon); }
+        .text-editor::placeholder { color: var(--silver); }
+
+        .text-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--silver);
+            padding: 8px 0 0;
+        }
+
+        .text-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            align-items: center;
+        }
+
+        .lang-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--graphite);
+        }
+        .lang-badge .ldot { width: 5px; height: 5px; border-radius: 50%; background: var(--carbon); }
+
+        /* --- Buttons --- */
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: var(--carbon);
+            color: var(--white);
+            border: none;
+            border-radius: 20px;
+            padding: 10px 20px;
+            font-family: var(--font);
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: opacity 0.15s;
+            text-decoration: none;
+        }
+        .btn-primary:hover { opacity: 0.85; }
+        .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-primary .chevron { font-size: 14px; }
+
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: var(--canvas);
+            color: var(--carbon);
+            border: 1px solid var(--stone);
+            border-radius: 20px;
+            padding: 8px 16px;
+            font-family: var(--font);
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .btn-secondary:hover { background: var(--stone); }
+        .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .btn-sm { padding: 6px 12px; font-size: 11px; }
+        .btn-full { width: 100%; justify-content: center; padding: 12px 20px; font-size: 14px; }
+
+        /* --- Side Settings Panel --- */
+        .settings-toggle {
+            position: fixed;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 20;
+            background: var(--white);
+            border: 1px solid var(--stone);
+            border-right: none;
+            border-radius: 20px 0 0 20px;
+            padding: 12px 10px;
+            cursor: pointer;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            font-family: var(--font);
+            font-size: 11px;
+            font-weight: 800;
+            color: var(--graphite);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            box-shadow: -2px 0 10px rgba(17,17,17,0.06);
+            transition: padding 0.2s;
+            display: none;
+        }
+        .settings-toggle.visible { display: block; }
+        .settings-toggle:hover { padding-right: 14px; }
+
+        .settings-panel {
+            position: fixed;
+            right: 0;
+            top: 0;
+            height: 100%;
+            width: 360px;
+            max-width: 90vw;
+            background: var(--white);
+            border-left: 2px solid var(--stone);
+            z-index: 30;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        .settings-panel.open { transform: translateX(0); }
+
+        .settings-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 2px solid var(--stone);
+        }
+        .settings-header h2 {
+            font-size: 16px;
+            font-weight: 800;
+            letter-spacing: -0.016em;
+        }
+        .settings-close {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+        }
+
+        .settings-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .settings-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(17,17,17,0.2);
+            z-index: 25;
+            display: none;
+        }
+        .settings-backdrop.visible { display: block; }
+
+        /* --- Settings Inputs --- */
+        .s-section { margin-bottom: 20px; }
+        .s-label {
+            font-size: 11px;
+            font-weight: 800;
+            color: var(--silver);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
+        }
+
+        .s-field { margin-bottom: 10px; }
+        .s-field label {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--graphite);
+            margin-bottom: 4px;
+        }
+        .s-field select, .s-field input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid var(--stone);
+            border-radius: 1.5px;
+            font-family: var(--font);
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--carbon);
+            background: var(--white);
+            outline: none;
+            appearance: none;
+            -webkit-appearance: none;
+            transition: border-color 0.15s;
+        }
+        .s-field select:focus, .s-field input:focus { border-color: var(--carbon); }
+        .s-field select {
+            background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%232d2d2d' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            padding-right: 28px;
+        }
+
+        .s-voice-row { display: flex; gap: 8px; align-items: flex-end; }
+        .s-voice-row .s-field { flex: 1; margin-bottom: 0; }
+        .s-voice-meta { font-size: 11px; font-weight: 500; color: var(--silver); margin-top: 5px; }
+
+        .s-slider-group { margin-bottom: 14px; }
+        .s-slider-group label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--graphite);
+            margin-bottom: 4px;
+        }
+        .s-slider-group .val {
+            font-family: var(--mono);
+            font-weight: 800;
+            color: var(--carbon);
+        }
+        .s-slider-group input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--stone);
+            outline: none;
+        }
+        .s-slider-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--carbon);
+            cursor: pointer;
+        }
+        .s-slider-range {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            font-weight: 500;
+            color: var(--silver);
+            margin-top: 2px;
+        }
+
+        /* --- Generate / Output in card --- */
+        .card-output { display: none; }
+        .card-output.visible { display: block; margin-top: 12px; }
+        .card-output audio { width: 100%; height: 32px; border-radius: 1.5px; outline: none; }
+
+        /* --- Spinner --- */
+        .spinner {
+            display: inline-block;
+            width: 14px; height: 14px;
+            border: 2px solid var(--stone);
+            border-top-color: var(--carbon);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        .spinner-lg { width: 18px; height: 18px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* --- Utils --- */
+        .hidden { display: none !important; }
+        .fade-in { animation: fadeIn 0.25s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+        @media (max-width: 700px) {
+            .floating-card { width: 85vw; min-width: 0; }
+            .text-panel { width: 92vw; height: 85vh; padding: 16px; }
+            .text-panel.collapsed { width: 280px; }
+            .settings-panel { width: 100vw; }
+        }
+    </style>
+</head>
+<body>
+    <!-- 3D Background -->
+    <div id="stage">
+        <canvas id="three-canvas"></canvas>
+    </div>
+
+    <!-- Text Overlay (appears after upload) -->
+    <div class="text-overlay" id="text-overlay">
+        <div class="text-panel fade-in" id="text-panel">
+            <div class="text-panel-header">
+                <div class="lang-badge">
+                    <span class="ldot"></span>
+                    <span>Detected:</span>
+                    <span id="lang-name" style="font-weight:800;">English</span>
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <button id="clean-btn" onclick="cleanText()" class="btn-secondary btn-sm">
+                        Clean with LLM <span class="chevron">&#8250;</span>
+                    </button>
+                    <button onclick="collapseText()" class="btn-secondary btn-sm" title="Collapse">
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M9 7.5L6 4.5L3 7.5" stroke="#2d2d2d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
+                </div>
+                <div class="text-collapsed-bar" onclick="expandText()">
+                    <span class="ldot"></span>
+                    <span id="collapsed-lang">English</span>
+                    <span style="color:var(--silver);font-weight:500;">&middot;</span>
+                    <span id="collapsed-words" style="color:var(--silver);font-weight:500;">0 words</span>
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style="margin-left:4px;"><path d="M3 4.5L6 7.5L9 4.5" stroke="#2d2d2d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </div>
+            </div>
+            <textarea id="text-editor" class="text-editor" placeholder="Extracted text will appear here..."></textarea>
+            <div class="text-meta">
+                <span id="char-count">0 characters</span>
+                <span id="word-count">0 words</span>
+            </div>
+            <div class="text-actions">
+                <button onclick="generateAudio()" id="generate-btn" class="btn-primary" style="flex:1;">
+                    Generate Audio <span class="chevron">&#8250;</span>
+                </button>
+            </div>
+            <div class="card-output" id="output-section">
+                <audio id="audio-player" controls></audio>
+                <div style="margin-top:8px;">
+                    <a id="download-link" href="#" download class="btn-primary btn-sm" style="text-decoration:none;">
+                        Download MP3 <span class="chevron">&#8250;</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Card (bottom center) -->
+    <div class="floating-card" id="floating-card">
+        <div class="card-inner" id="card-upload-state">
+            <div id="upload-zone" class="drop-zone">
+                <p>Drop a document</p>
+                <span class="hint">or</span>
+                <button onclick="document.getElementById('file-input').click()" class="btn-primary btn-sm">
+                    Browse <span class="chevron">&#8250;</span>
+                </button>
+                <input type="file" id="file-input" class="hidden" accept=".pdf,.docx,.pptx,.txt">
+            </div>
+            <!-- Upload Progress -->
+            <div id="upload-progress" class="hidden" style="text-align:center;padding:8px 0;">
+                <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
+                    <div class="spinner"></div>
+                    <span style="font-size:12px;font-weight:700;" id="progress-text">Extracting...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Toggle (right edge) -->
+    <button class="settings-toggle" id="settings-toggle" onclick="openSettings()">Settings</button>
+
+    <!-- Settings Backdrop -->
+    <div class="settings-backdrop" id="settings-backdrop" onclick="closeSettings()"></div>
+
+    <!-- Settings Side Panel -->
+    <div class="settings-panel" id="settings-panel">
+        <div class="settings-header">
+            <h2>Settings</h2>
+            <button class="settings-close" onclick="closeSettings()">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <path d="M4 4L14 14M14 4L4 14" stroke="#111111" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </div>
+        <div class="settings-body">
+            <!-- LLM -->
+            <div class="s-section">
+                <div class="s-label">LLM Provider</div>
+                <div class="s-field">
+                    <label>Provider</label>
+                    <select id="llm-provider" onchange="onProviderChange()">
+                        <option value="">Select</option>
+                    </select>
+                </div>
+                <div class="s-field">
+                    <label>Model</label>
+                    <select id="llm-model" disabled>
+                        <option value="">Select provider</option>
+                    </select>
+                </div>
+                <div class="s-field">
+                    <label>API Key</label>
+                    <input id="llm-api-key" type="password" placeholder="sk-...">
+                </div>
+            </div>
+
+            <!-- Voice -->
+            <div class="s-section">
+                <div class="s-label">Voice</div>
+                <div class="s-voice-row">
+                    <div class="s-field">
+                        <label>Voice</label>
+                        <select id="voice-select">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                    <button onclick="previewVoice()" id="preview-btn" class="btn-secondary btn-sm" style="height:33px;">
+                        Preview
+                    </button>
+                </div>
+                <div id="voice-details" class="s-voice-meta"></div>
+                <audio id="preview-player" class="hidden"></audio>
+            </div>
+
+            <!-- Audio -->
+            <div class="s-section">
+                <div class="s-label">Audio</div>
+                <div class="s-slider-group">
+                    <label>Speed <span id="rate-value" class="val">+0%</span></label>
+                    <input type="range" id="rate-slider" min="-50" max="100" value="0" step="5" oninput="updateSlider('rate')">
+                    <div class="s-slider-range"><span>-50%</span><span>+100%</span></div>
+                </div>
+                <div class="s-slider-group">
+                    <label>Pitch <span id="pitch-value" class="val">+0Hz</span></label>
+                    <input type="range" id="pitch-slider" min="-50" max="50" value="0" step="1" oninput="updateSlider('pitch')">
+                    <div class="s-slider-range"><span>-50Hz</span><span>+50Hz</span></div>
+                </div>
+                <div class="s-slider-group">
+                    <label>Volume <span id="volume-value" class="val">+0%</span></label>
+                    <input type="range" id="volume-slider" min="-50" max="100" value="0" step="5" oninput="updateSlider('volume')">
+                    <div class="s-slider-range"><span>-50%</span><span>+100%</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Three.js -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        const canvas = document.getElementById('three-canvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.1;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf1f2f3);
+        scene.fog = new THREE.FogExp2(0xf1f2f3, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+        camera.position.set(0, 2, 6);
+
+        const controls = new OrbitControls(camera, canvas);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.enableZoom = false;
+        controls.enablePan = false;
+        controls.minPolarAngle = Math.PI / 4;
+        controls.maxPolarAngle = Math.PI / 1.6;
+
+        // --- Lighting ---
+        const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambient);
+
+        const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        keyLight.position.set(4, 6, 4);
+        scene.add(keyLight);
+
+        const fillLight = new THREE.DirectionalLight(0xaaccff, 0.25);
+        fillLight.position.set(-4, 3, -2);
+        scene.add(fillLight);
+
+        const accentA = new THREE.PointLight(0x00ffaa, 0.8, 12);
+        accentA.position.set(3, 1, 0);
+        scene.add(accentA);
+
+        const accentB = new THREE.PointLight(0x4488ff, 0.6, 10);
+        accentB.position.set(-3, 2, 2);
+        scene.add(accentB);
+
+        // --- Load Vinyl ---
+        let vinyl = null;
+        const loader = new GLTFLoader();
+        loader.load('/static/vinyl.glb', (gltf) => {
+            vinyl = gltf.scene;
+            vinyl.scale.set(9, 9, 9);
+            scene.add(vinyl);
+        });
+
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        composer.addPass(new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            0.1, 0.5, 0.9
+        ));
+
+        function resize() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            renderer.setSize(w, h);
+            composer.setSize(w, h);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+            controls.update();
+
+            if (vinyl) vinyl.rotation.y += 0.004;
+
+            composer.render();
+        }
+        animate();
+    </script>
+
+    <!-- App Logic -->
+    <script>
+        let currentFileId = null;
+        let currentLangCode = "en";
+        let providersData = [];
+        let allVoicesCache = [];
+
+        document.addEventListener("DOMContentLoaded", () => {
+            loadProviders();
+            setupDragDrop();
+        });
+
+        function setupDragDrop() {
+            const zone = document.getElementById("upload-zone");
+            const input = document.getElementById("file-input");
+            zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
+            zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+            zone.addEventListener("drop", (e) => {
+                e.preventDefault();
+                zone.classList.remove("dragover");
+                if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+            });
+            zone.addEventListener("click", (e) => { if (e.target.tagName !== "BUTTON") input.click(); });
+            input.addEventListener("change", () => { if (input.files.length) uploadFile(input.files[0]); });
+        }
+
+        async function uploadFile(file) {
+            const ext = "." + file.name.split(".").pop().toLowerCase();
+            if (![".pdf", ".docx", ".pptx", ".txt"].includes(ext)) {
+                alert("Unsupported file type."); return;
+            }
+            document.getElementById("upload-zone").classList.add("hidden");
+            document.getElementById("upload-progress").classList.remove("hidden");
+            const formData = new FormData();
+            formData.append("file", file);
+            try {
+                const resp = await fetch("/api/upload", { method: "POST", body: formData });
+                const data = await resp.json();
+                if (!resp.ok) { alert(data.detail || "Upload failed"); resetUpload(); return; }
+                currentFileId = data.file_id;
+                currentLangCode = data.language_code;
+                document.getElementById("text-editor").value = data.raw_text;
+                document.getElementById("lang-name").textContent = data.language_name;
+                updateCounts();
+                if (data.scanned) document.getElementById("clean-btn").textContent = "Extract with LLM (Scanned)";
+
+                // Hide floating card, show text overlay
+                document.getElementById("floating-card").classList.add("hidden-state");
+                const overlay = document.getElementById("text-overlay");
+                overlay.classList.add("visible");
+                document.getElementById("settings-toggle").classList.add("visible");
+
+                loadVoices(data.language_code);
+            } catch (err) { alert("Upload failed: " + err.message); resetUpload(); }
+        }
+
+        function resetUpload() {
+            document.getElementById("upload-zone").classList.remove("hidden");
+            document.getElementById("upload-progress").classList.add("hidden");
+        }
+
+        document.getElementById("text-editor").addEventListener("input", updateCounts);
+
+        function updateCounts() {
+            const t = document.getElementById("text-editor").value;
+            document.getElementById("char-count").textContent = t.length + " characters";
+            const wc = t.trim() ? t.trim().split(/\s+/).length : 0;
+            document.getElementById("word-count").textContent = wc + " words";
+            document.getElementById("collapsed-words").textContent = wc + " words";
+            document.getElementById("collapsed-lang").textContent = document.getElementById("lang-name").textContent;
+        }
+
+        // --- Collapse / Expand ---
+        function collapseText() {
+            const overlay = document.getElementById("text-overlay");
+            overlay.classList.add("collapsed-bg");
+            document.getElementById("collapsed-lang").textContent = document.getElementById("lang-name").textContent;
+            const wc = document.getElementById("text-editor").value.trim();
+            document.getElementById("collapsed-words").textContent = (wc ? wc.split(/\s+/).length : 0) + " words";
+        }
+        function expandText() {
+            const overlay = document.getElementById("text-overlay");
+            overlay.classList.remove("collapsed-bg");
+        }
+
+        document.getElementById("text-overlay").addEventListener("click", (e) => {
+            const overlay = document.getElementById("text-overlay");
+            if (overlay.classList.contains("collapsed-bg")) return;
+            if (e.target.id === "text-overlay") expandText();
+        });
+
+        // --- Settings ---
+        function openSettings() {
+            document.getElementById("settings-panel").classList.add("open");
+            document.getElementById("settings-backdrop").classList.add("visible");
+        }
+        function closeSettings() {
+            document.getElementById("settings-panel").classList.remove("open");
+            document.getElementById("settings-backdrop").classList.remove("visible");
+        }
+
+        // --- Providers ---
+        async function loadProviders() {
+            try {
+                const resp = await fetch("/api/providers");
+                providersData = (await resp.json()).providers;
+                const sel = document.getElementById("llm-provider");
+                sel.innerHTML = '<option value="">Select</option>';
+                providersData.forEach(p => {
+                    const o = document.createElement("option");
+                    o.value = p.id; o.textContent = p.name;
+                    sel.appendChild(o);
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        function onProviderChange() {
+            const id = document.getElementById("llm-provider").value;
+            const sel = document.getElementById("llm-model");
+            sel.innerHTML = "";
+            if (!id) { sel.innerHTML = '<option value="">Select provider</option>'; sel.disabled = true; return; }
+            const p = providersData.find(x => x.id === id);
+            if (!p) return;
+            sel.disabled = false;
+            p.models.forEach(m => {
+                const o = document.createElement("option");
+                o.value = m.value; o.textContent = m.label;
+                sel.appendChild(o);
+            });
+        }
+
+        // --- LLM Clean ---
+        async function cleanText() {
+            const text = document.getElementById("text-editor").value;
+            if (!text.trim()) { alert("No text to clean"); return; }
+            const pid = document.getElementById("llm-provider").value;
+            const model = document.getElementById("llm-model").value;
+            const key = document.getElementById("llm-api-key").value;
+            if (!pid || !model) { alert("Select an LLM provider and model in Settings"); return; }
+            const btn = document.getElementById("clean-btn");
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Cleaning';
+            try {
+                const resp = await fetch("/api/clean", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text, model, api_key: key, provider_id: pid }),
+                });
+                const data = await resp.json();
+                if (!resp.ok) { alert(data.detail || "Cleaning failed"); return; }
+                document.getElementById("text-editor").value = data.cleaned_text;
+                updateCounts();
+            } catch (e) { alert("Cleaning failed: " + e.message); }
+            finally { btn.disabled = false; btn.innerHTML = 'Clean with LLM <span class="chevron">&#8250;</span>'; }
+        }
+
+        // --- Voices ---
+        async function loadVoices(lang) {
+            try {
+                const resp = await fetch("/api/voices?lang=" + lang);
+                const data = await resp.json();
+                allVoicesCache = data.voices;
+                const sel = document.getElementById("voice-select");
+                sel.innerHTML = "";
+                if (!data.voices.length) { sel.innerHTML = '<option value="">No voices found</option>'; return; }
+                data.voices.forEach(v => {
+                    const o = document.createElement("option");
+                    o.value = v.short_name;
+                    o.textContent = v.friendly_name + " (" + v.gender + ")";
+                    sel.appendChild(o);
+                });
+                document.getElementById("voice-details").textContent = data.voices.length + " voice" + (data.voices.length > 1 ? "s" : "");
+            } catch (e) { console.error(e); }
+        }
+
+        document.getElementById("voice-select").addEventListener("change", () => {
+            const v = allVoicesCache.find(x => x.short_name === document.getElementById("voice-select").value);
+            if (v) document.getElementById("voice-details").textContent =
+                (v.personalities ? v.personalities.join(", ") : "") + " \u2022 " + v.gender + " \u2022 " + v.locale;
+        });
+
+        // --- Sliders ---
+        function updateSlider(t) {
+            const s = document.getElementById(t + "-slider");
+            const d = document.getElementById(t + "-value");
+            const v = parseInt(s.value);
+            d.textContent = (v >= 0 ? "+" : "") + v + (t === "pitch" ? "Hz" : "%");
+        }
+        function getRate() { return (document.getElementById("rate-slider").value >= 0 ? "+" : "") + document.getElementById("rate-slider").value + "%"; }
+        function getPitch() { return (document.getElementById("pitch-slider").value >= 0 ? "+" : "") + document.getElementById("pitch-slider").value + "Hz"; }
+        function getVolume() { return (document.getElementById("volume-slider").value >= 0 ? "+" : "") + document.getElementById("volume-slider").value + "%"; }
+
+        // --- Preview ---
+        async function previewVoice() {
+            const voice = document.getElementById("voice-select").value;
+            if (!voice) { alert("Select a voice"); return; }
+            const btn = document.getElementById("preview-btn");
+            btn.disabled = true; btn.textContent = "...";
+            try {
+                const resp = await fetch("/api/preview", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ voice, rate: getRate(), pitch: getPitch(), volume: getVolume() }),
+                });
+                if (!resp.ok) { const d = await resp.json(); alert(d.detail || "Preview failed"); return; }
+                const blob = await resp.blob();
+                const player = document.getElementById("preview-player");
+                player.src = URL.createObjectURL(blob);
+                player.classList.remove("hidden");
+                player.play();
+            } catch (e) { alert("Preview failed: " + e.message); }
+            finally { btn.disabled = false; btn.textContent = "Preview"; }
+        }
+
+        // --- Generate ---
+        async function generateAudio() {
+            const text = document.getElementById("text-editor").value;
+            if (!text.trim()) { alert("No text to synthesize"); return; }
+            const voice = document.getElementById("voice-select").value;
+            if (!voice) { alert("Select a voice"); return; }
+            const btn = document.getElementById("generate-btn");
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner spinner-lg"></span> Generating';
+            try {
+                const resp = await fetch("/api/synthesize", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text, voice, rate: getRate(), pitch: getPitch(), volume: getVolume() }),
+                });
+                const data = await resp.json();
+                if (!resp.ok) { alert(data.detail || "Generation failed"); return; }
+                document.getElementById("audio-player").src = data.audio_url;
+                document.getElementById("download-link").href = data.audio_url;
+                document.getElementById("output-section").classList.add("visible");
+                document.getElementById("audio-player").play();
+            } catch (e) { alert("Generation failed: " + e.message); }
+            finally { btn.disabled = false; btn.innerHTML = 'Generate Audio <span class="chevron">&#8250;</span>'; }
+        }
+    </script>
+</body>
+</html>
