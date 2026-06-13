@@ -451,7 +451,19 @@
         /* --- Generate / Output in card --- */
         .card-output { display: none; }
         .card-output.visible { display: block; margin-top: 12px; }
-        .card-output audio { width: 100%; height: 32px; border-radius: 1.5px; outline: none; }
+        .card-output audio {
+            width: 100%;
+            height: 32px;
+            border-radius: 1.5px;
+            outline: none;
+        }
+        .card-output audio::-webkit-media-controls-panel { display: none; }
+        .card-output audio::-webkit-media-controls-enclosure { display: none; }
+        .card-output audio::-webkit-media-controls-play-button { display: none; }
+        .card-output audio::-webkit-media-controls-timeline { display: block !important; }
+        .card-output audio::-webkit-media-controls-volume-slider { display: none; }
+        .card-output audio::-webkit-media-controls-mute-button { display: none; }
+        .card-output audio::-webkit-media-controls-fullscreen-button { display: none; }
 
         /* --- Spinner --- */
         .spinner {
@@ -520,7 +532,7 @@
                 </button>
             </div>
             <div class="card-output" id="output-section">
-                <audio id="audio-player" controls></audio>
+                <audio id="audio-player" controlsList="nodownload nodoplaybackrate"></audio>
                 <div style="margin-top:8px;">
                     <a id="download-link" href="#" download class="btn-primary btn-sm" style="text-decoration:none;">
                         Download MP3 <span class="chevron">&#8250;</span>
@@ -659,6 +671,8 @@
         const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
         camera.position.set(0, 2, 6);
 
+        const cameraTarget = { pos: new THREE.Vector3(0, 2, 6) };
+
         const controls = new OrbitControls(camera, canvas);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
@@ -666,6 +680,7 @@
         controls.enablePan = false;
         controls.minPolarAngle = Math.PI / 4;
         controls.maxPolarAngle = Math.PI / 1.6;
+        window.orbitControls = controls;
 
         // --- Lighting ---
         const ambient = new THREE.AmbientLight(0xffffff, 0.5);
@@ -689,11 +704,30 @@
 
         // --- Load Vinyl ---
         let vinyl = null;
+        const vinylGroup = new THREE.Group();
+        scene.add(vinylGroup);
+
+        const vinylTarget = { pos: new THREE.Vector3(0, 0, 0), rot: new THREE.Euler(-Math.PI / 2 + 15 * Math.PI / 180, 0, 0) };
+        let vinylSpinning = true;
+
+        const texLoader = new THREE.TextureLoader();
+        const newAlbedo = texLoader.load('/static/VinylRecord3Albedo.png');
+
         const loader = new GLTFLoader();
         loader.load('/static/vinyl.glb', (gltf) => {
             vinyl = gltf.scene;
-            vinyl.scale.set(9, 9, 9);
-            scene.add(vinyl);
+            vinyl.scale.set(11.9, 11.9, 11.9);
+            vinyl.traverse((child) => {
+                if (child.isMesh) {
+                    child.material.map = newAlbedo;
+                    child.material.needsUpdate = true;
+                }
+                child.rotation.set(0, 0, 0);
+                child.quaternion.identity();
+            });
+            vinylGroup.add(vinyl);
+            window.vinylObj = vinyl;
+            window.vinylGroup = vinylGroup;
         });
 
 
@@ -721,11 +755,75 @@
             const t = clock.getElapsedTime();
             controls.update();
 
-            if (vinyl) vinyl.rotation.y += 0.004;
+            vinylGroup.position.lerp(vinylTarget.pos, 0.04);
+            vinylGroup.rotation.x += (vinylTarget.rot.x - vinylGroup.rotation.x) * 0.04;
+            vinylGroup.rotation.y += (vinylTarget.rot.y - vinylGroup.rotation.y) * 0.04;
+            vinylGroup.rotation.z += (vinylTarget.rot.z - vinylGroup.rotation.z) * 0.04;
+
+            if (!controls.enabled) {
+                camera.position.lerp(cameraTarget.pos, 0.05);
+                camera.lookAt(0, 0, 0);
+            }
+
+            if (vinyl && vinylSpinning) {
+                if (vinylInPlayerMode) {
+                    vinyl.rotation.z += 0.004;
+                } else {
+                    vinyl.rotation.y += 0.004;
+                    vinyl.rotation.z += 0.002;
+                }
+            }
 
             composer.render();
         }
         animate();
+
+        // --- Raycasting for vinyl click ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        canvas.addEventListener('click', (e) => {
+            if (!vinyl) return;
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(vinylGroup.children, true);
+            if (hits.length > 0 && window.audioPlayer) {
+                if (window.audioPlayer.paused) {
+                    window.audioPlayer.play();
+                } else {
+                    window.audioPlayer.pause();
+                }
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!vinyl) return;
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(vinylGroup.children, true);
+            canvas.style.cursor = hits.length > 0 ? 'pointer' : '';
+        });
+
+        // --- Expose animation functions ---
+        let vinylInPlayerMode = false;
+
+        window.animateVinylToPlayer = () => {
+            vinylTarget.pos.set(-3.5, 0, 0);
+            vinylTarget.rot.set(0, Math.atan2(3.5, 6), 0);
+            vinylInPlayerMode = true;
+            if (vinyl) vinyl.rotation.y = 0;
+        };
+        window.animateVinylToCenter = () => {
+            vinylTarget.pos.set(0, 0, 0);
+            vinylTarget.rot.set(-Math.PI / 2 + 15 * Math.PI / 180, 0, 0);
+            vinylInPlayerMode = false;
+            if (vinyl) vinyl.rotation.z = 0;
+        };
+        window.setVinylSpin = (spin) => { vinylSpinning = spin; };
     </script>
 
     <!-- App Logic -->
@@ -959,10 +1057,30 @@
                 });
                 const data = await resp.json();
                 if (!resp.ok) { alert(data.detail || "Generation failed"); return; }
-                document.getElementById("audio-player").src = data.audio_url;
+                const player = document.getElementById("audio-player");
+                player.src = data.audio_url;
                 document.getElementById("download-link").href = data.audio_url;
                 document.getElementById("output-section").classList.add("visible");
-                document.getElementById("audio-player").play();
+
+                window.audioPlayer = player;
+
+                player.onplay = () => {
+                    if (window.setVinylSpin) window.setVinylSpin(true);
+                    if (window.orbitControls) window.orbitControls.enabled = false;
+                    cameraTarget.pos.set(0, 2, 6);
+                    cameraTarget.lookAt.set(0, 0, 0);
+                };
+                player.onpause = () => {
+                    if (window.setVinylSpin) window.setVinylSpin(false);
+                    if (window.orbitControls) window.orbitControls.enabled = true;
+                };
+                player.onended = () => {
+                    if (window.setVinylSpin) window.setVinylSpin(false);
+                    if (window.orbitControls) window.orbitControls.enabled = true;
+                };
+
+                player.play();
+                if (window.animateVinylToPlayer) window.animateVinylToPlayer();
             } catch (e) { alert("Generation failed: " + e.message); }
             finally { btn.disabled = false; btn.innerHTML = 'Generate Audio <span class="chevron">&#8250;</span>'; }
         }
