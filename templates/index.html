@@ -41,19 +41,21 @@
             width: 30vw;
             min-width: 340px;
             max-width: 500px;
-            height: auto;
-            min-height: 0;
-            background: var(--white);
+            height: 56px;
+            min-height: 56px;
+            background: rgba(255,255,255,0.95);
             border-radius: 25px;
-            box-shadow:
-                0 0 60px rgba(17,17,17,0.10),
-                0 0 120px rgba(17,17,17,0.06),
-                0 4px 30px rgba(17,17,17,0.12);
+            box-shadow: 0 4px 30px rgba(17,17,17,0.12);
             z-index: 10;
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            transition: opacity 0.3s ease, transform 0.3s ease;
+            transition: opacity 0.3s ease, transform 0.3s ease, height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                        min-height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .floating-card.expanded {
+            height: 75vh;
+            min-height: 400px;
         }
         .floating-card.hidden-state {
             opacity: 0;
@@ -64,12 +66,13 @@
         .card-inner {
             display: flex;
             flex-direction: column;
-            padding: 16px 20px 20px;
+            padding: 12px 24px;
+            height: 100%;
         }
 
         /* --- Upload Zone (clean, no border) --- */
         .drop-zone {
-            padding: 8px 0;
+            padding: 0;
             text-align: center;
             cursor: pointer;
             transition: opacity 0.15s;
@@ -77,12 +80,45 @@
             align-items: center;
             justify-content: center;
             gap: 12px;
+            height: 32px;
+        }
+        .floating-card.expanded .drop-zone {
+            flex-direction: column;
+            gap: 8px;
+            height: auto;
+            padding: 8px 0;
         }
         .drop-zone:hover { opacity: 0.7; }
         .drop-zone p {
             font-size: 13px;
             font-weight: 700;
             letter-spacing: -0.016em;
+        }
+        .floating-card.expanded .drop-zone p { font-size: 14px; }
+        .direct-textarea {
+            display: none;
+            flex: 1;
+            width: 100%;
+            border: none;
+            outline: none;
+            resize: none;
+            font-family: var(--font);
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--carbon);
+            background: transparent;
+            line-height: 1.6;
+            padding: 0;
+        }
+        .floating-card.expanded .direct-textarea { display: block; }
+        .floating-card.expanded .hint { display: none; }
+        .floating-card.expanded .drop-zone { margin-bottom: 8px; }
+        .floating-card.expanded .card-inner {
+            padding: 20px 28px;
+        }
+        .floating-card.expanded .expanded-actions {
+            display: flex !important;
+            margin-top: 12px;
         }
         .drop-zone .hint {
             font-size: 11px;
@@ -119,6 +155,18 @@
         }
         .text-overlay.collapsed-bg .text-panel {
             pointer-events: auto;
+            width: 70vw;
+            max-width: 900px;
+            height: 56px;
+            min-height: 0;
+            max-height: 56px;
+            padding: 12px 24px;
+            cursor: pointer;
+            transform: scale(1) translateY(0);
+            opacity: 1;
+            box-shadow: 0 4px 30px rgba(17,17,17,0.12);
+            background: rgba(255,255,255,0.95);
+            border-radius: 25px;
         }
 
         .text-panel {
@@ -150,19 +198,6 @@
             transform: scale(1) translateY(0);
             opacity: 1;
         }
-        .text-overlay.collapsed-bg .text-panel {
-            width: 350px;
-            height: 56px;
-            min-height: 0;
-            max-height: 56px;
-            padding: 12px 24px;
-            cursor: pointer;
-            transform: scale(1) translateY(0);
-            opacity: 1;
-            box-shadow: 0 4px 30px rgba(17,17,17,0.12);
-            background: rgba(255,255,255,0.95);
-            border-radius: 25px;
-        }
         .text-overlay.collapsed-bg .text-panel:hover {
             box-shadow: 0 6px 40px rgba(17,17,17,0.18);
         }
@@ -187,14 +222,17 @@
             font-size: 12px;
             font-weight: 700;
             color: var(--graphite);
+            height: 100%;
         }
-        .text-overlay.collapsed-bg .text-collapsed-bar { display: flex; }
-        .text-overlay.collapsed-bg .text-panel-header > *:not(.text-collapsed-bar) { display: none; }
+        .text-overlay.collapsed-bg .text-collapsed-bar.has-audio { display: flex; }
+        .text-overlay.collapsed-bg .text-collapsed-bar.no-audio { display: flex; }
+        .text-overlay.collapsed-bg .text-panel-header { display: none; }
         .text-overlay.collapsed-bg .text-editor,
         .text-overlay.collapsed-bg .text-meta,
         .text-overlay.collapsed-bg .text-actions,
         .text-overlay.collapsed-bg .card-output { display: none; }
         .text-collapsed-bar .ldot { width: 5px; height: 5px; border-radius: 50%; background: var(--carbon); }
+        #collapsed-audio-slot audio { width: 100%; height: 32px; }
 
         .text-editor {
             flex: 1;
@@ -451,12 +489,18 @@
         /* --- Generate / Output in card --- */
         .card-output { display: none; }
         .card-output.visible { display: block; margin-top: 12px; }
-        #waveform-canvas {
-            display: none;
+        .card-output audio {
             width: 100%;
-            height: 80px;
+            height: 36px;
             border-radius: 20px;
-            cursor: crosshair;
+            outline: none;
+        }
+        audio::-webkit-media-controls-panel {
+            background: var(--stone);
+            border-radius: 20px;
+        }
+        audio::-webkit-media-controls-timeline-container {
+            background: transparent;
         }
 
         /* --- Spinner --- */
@@ -500,20 +544,20 @@
                     <span id="lang-name" style="font-weight:800;">English</span>
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;">
-                    <button id="clean-btn" onclick="cleanText()" class="btn-secondary btn-sm">
-                        Clean with LLM <span class="chevron">&#8250;</span>
-                    </button>
                     <button onclick="collapseText()" class="btn-secondary btn-sm" title="Collapse">
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M9 7.5L6 4.5L3 7.5" stroke="#2d2d2d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     </button>
                 </div>
-                <div class="text-collapsed-bar" onclick="expandText()">
-                    <span class="ldot"></span>
-                    <span id="collapsed-lang">English</span>
-                    <span style="color:var(--silver);font-weight:500;">&middot;</span>
-                    <span id="collapsed-words" style="color:var(--silver);font-weight:500;">0 words</span>
-                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style="margin-left:4px;"><path d="M3 4.5L6 7.5L9 4.5" stroke="#2d2d2d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </div>
+            </div>
+            <div class="text-collapsed-bar" id="collapsed-audio-bar" style="gap:8px;align-items:center;" onclick="expandText()">
+                <div id="collapsed-audio-slot" style="flex:1;min-width:0;"></div>
+                <a id="download-link-collapsed" href="#" download class="btn-primary btn-sm" style="text-decoration:none;white-space:nowrap;cursor:pointer;" onclick="event.stopPropagation();">Download</a>
+                <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style="flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();expandText()"><path d="M3 7.5L6 4.5L9 7.5" stroke="#2d2d2d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="text-collapsed-bar" id="collapsed-empty-bar" style="gap:8px;align-items:center;" onclick="expandText()">
+                <span class="ldot"></span>
+                <span style="font-size:12px;font-weight:700;color:var(--graphite);">Doc-to-Speech</span>
+                <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style="flex-shrink:0;margin-left:auto;cursor:pointer;"><path d="M3 7.5L6 4.5L9 7.5" stroke="#2d2d2d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
             <textarea id="text-editor" class="text-editor" placeholder="Extracted text will appear here..."></textarea>
             <div class="text-meta">
@@ -526,29 +570,28 @@
                 </button>
             </div>
             <div class="card-output" id="output-section">
-                <audio id="audio-player" controlsList="nodownload nodoplaybackrate" style="display:none;"></audio>
-                <canvas id="waveform-canvas"></canvas>
-                <div style="margin-top:8px;">
-                    <a id="download-link" href="#" download class="btn-primary btn-sm" style="text-decoration:none;">
-                        Download MP3 <span class="chevron">&#8250;</span>
-                    </a>
-                </div>
+                <audio id="audio-player" controls></audio>
             </div>
         </div>
     </div>
 
     <!-- Floating Card (bottom center) -->
-    <div class="floating-card" id="floating-card">
+    <div class="floating-card" id="floating-card" onclick="toggleCardExpand()">
         <div class="card-inner" id="card-upload-state">
             <div id="upload-zone" class="drop-zone">
-                <p>Drop a document</p>
+                <p>Drop a document or type directly</p>
                 <span class="hint">or</span>
-                <button onclick="document.getElementById('file-input').click()" class="btn-primary btn-sm">
+                <button onclick="event.stopPropagation();document.getElementById('file-input').click()" class="btn-primary btn-sm">
                     Browse <span class="chevron">&#8250;</span>
                 </button>
                 <input type="file" id="file-input" class="hidden" accept=".pdf,.docx,.pptx,.txt">
             </div>
-            <!-- Upload Progress -->
+            <textarea id="direct-text-input" class="direct-textarea" placeholder="Type or paste text here..." onclick="event.stopPropagation()"></textarea>
+            <div class="expanded-actions" style="display:none;">
+                <button onclick="event.stopPropagation();submitDirectText()" class="btn-primary btn-sm" style="flex:1;">
+                    Submit Text <span class="chevron">&#8250;</span>
+                </button>
+            </div>
             <div id="upload-progress" class="hidden" style="text-align:center;padding:8px 0;">
                 <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
                     <div class="spinner"></div>
@@ -666,7 +709,8 @@
         const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
         camera.position.set(0, 2, 6);
 
-        const cameraTarget = { pos: new THREE.Vector3(0, 2, 6) };
+        const cameraTarget = { pos: new THREE.Vector3(0, 2, 6), lookAt: new THREE.Vector3(0, 0, 0) };
+        window.cameraTarget = cameraTarget;
 
         const controls = new OrbitControls(camera, canvas);
         controls.enableDamping = true;
@@ -757,16 +801,12 @@
 
             if (!controls.enabled) {
                 camera.position.lerp(cameraTarget.pos, 0.05);
-                camera.lookAt(0, 0, 0);
+                camera.lookAt(cameraTarget.lookAt);
             }
 
             if (vinyl && vinylSpinning) {
-                if (vinylInPlayerMode) {
-                    vinyl.rotation.z += 0.004;
-                } else {
-                    vinyl.rotation.y += 0.004;
-                    vinyl.rotation.z += 0.002;
-                }
+                vinyl.rotation.y += 0.004;
+                vinyl.rotation.z += 0.002;
             }
 
             composer.render();
@@ -777,47 +817,15 @@
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
-        canvas.addEventListener('click', (e) => {
-            if (!vinyl) return;
-            const rect = canvas.getBoundingClientRect();
-            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const hits = raycaster.intersectObjects(vinylGroup.children, true);
-            if (hits.length > 0 && window.audioPlayer) {
-                if (window.audioPlayer.paused) {
-                    window.audioPlayer.play();
-                } else {
-                    window.audioPlayer.pause();
-                }
-            }
-        });
-
         canvas.addEventListener('mousemove', (e) => {
             if (!vinyl) return;
             const rect = canvas.getBoundingClientRect();
             mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
-            const hits = raycaster.intersectObjects(vinylGroup.children, true);
-            canvas.style.cursor = hits.length > 0 ? 'pointer' : '';
         });
 
         // --- Expose animation functions ---
-        let vinylInPlayerMode = false;
-
-        window.animateVinylToPlayer = () => {
-            vinylTarget.pos.set(-3.5, 0, 0);
-            vinylTarget.rot.set(0, Math.atan2(3.5, 6), 0);
-            vinylInPlayerMode = true;
-            if (vinyl) vinyl.rotation.y = 0;
-        };
-        window.animateVinylToCenter = () => {
-            vinylTarget.pos.set(0, 0, 0);
-            vinylTarget.rot.set(-Math.PI / 2 + 15 * Math.PI / 180, 0, 0);
-            vinylInPlayerMode = false;
-            if (vinyl) vinyl.rotation.z = 0;
-        };
         window.setVinylSpin = (spin) => { vinylSpinning = spin; };
     </script>
 
@@ -827,160 +835,6 @@
         let currentLangCode = "en";
         let providersData = [];
         let allVoicesCache = [];
-
-        // --- Web Audio API + Waveform ---
-        let audioCtx = null;
-        let analyser = null;
-        let sourceNode = null;
-        const WAVEFORM_SECONDS = 10;
-        const WAVEFORM_DOWNSAMPLE = 300;
-        let waveformBuffer = [];
-        let waveformWriteIdx = 0;
-        let waveformTotalFrames = 0;
-        let waveformAnimId = null;
-        let waveformDragging = false;
-        const waveCanvas = document.getElementById("waveform-canvas");
-        const waveCtx = waveCanvas ? waveCanvas.getContext("2d") : null;
-
-        function initWaveform(player) {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (analyser) return;
-            analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 2048;
-            analyser.smoothingTimeConstant = 0.8;
-            sourceNode = audioCtx.createMediaElementSource(player);
-            sourceNode.connect(analyser);
-            analyser.connect(audioCtx.destination);
-        }
-
-        function resizeWaveCanvas() {
-            if (!waveCanvas) return;
-            const dpr = window.devicePixelRatio || 1;
-            const rect = waveCanvas.getBoundingClientRect();
-            waveCanvas.width = rect.width * dpr;
-            waveCanvas.height = rect.height * dpr;
-            waveCtx.scale(dpr, dpr);
-        }
-
-        function startWaveformLoop() {
-            if (waveformAnimId) return;
-            waveformBuffer = [];
-            waveformWriteIdx = 0;
-            waveformTotalFrames = 0;
-            waveCanvas.style.display = "block";
-            resizeWaveCanvas();
-            waveformAnimId = requestAnimationFrame(drawWaveform);
-        }
-
-        function stopWaveformLoop() {
-            if (waveformAnimId) { cancelAnimationFrame(waveformAnimId); waveformAnimId = null; }
-        }
-
-        function drawWaveform() {
-            waveformAnimId = requestAnimationFrame(drawWaveform);
-            if (!analyser || !window.audioPlayer) return;
-
-            const player = window.audioPlayer;
-            const bufLen = analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufLen);
-
-            if (!player.paused) {
-                analyser.getByteTimeDomainData(dataArray);
-                let sum = 0;
-                for (let i = 0; i < bufLen; i++) sum += Math.abs(dataArray[i] - 128);
-                const avg = sum / bufLen / 128;
-                waveformBuffer[waveformWriteIdx] = avg;
-                waveformWriteIdx = (waveformWriteIdx + 1) % (WAVEFORM_SECONDS * 60);
-                if (waveformTotalFrames < WAVEFORM_SECONDS * 60) waveformTotalFrames++;
-            }
-
-            const rect = waveCanvas.getBoundingClientRect();
-            const w = rect.width;
-            const h = rect.height;
-            const mid = h / 2;
-
-            waveCtx.clearRect(0, 0, w, h);
-
-            const totalFrames = waveformTotalFrames;
-            if (totalFrames < 2) return;
-
-            const step = w / (WAVEFORM_SECONDS * 60);
-            const readStart = (waveformWriteIdx - totalFrames + WAVEFORM_SECONDS * 60 * 2) % (WAVEFORM_SECONDS * 60);
-
-            waveCtx.beginPath();
-            waveCtx.moveTo(0, mid);
-            for (let i = 0; i < totalFrames; i++) {
-                const val = waveformBuffer[(readStart + i) % (WAVEFORM_SECONDS * 60)] || 0;
-                const x = i * step;
-                const amp = val * mid * 0.9;
-                waveCtx.lineTo(x, mid - amp);
-            }
-            for (let i = totalFrames - 1; i >= 0; i--) {
-                const val = waveformBuffer[(readStart + i) % (WAVEFORM_SECONDS * 60)] || 0;
-                const x = i * step;
-                const amp = val * mid * 0.9;
-                waveCtx.lineTo(x, mid + amp);
-            }
-            waveCtx.closePath();
-            waveCtx.fillStyle = "rgba(17,17,17,0.6)";
-            waveCtx.fill();
-
-            waveCtx.strokeStyle = "#111";
-            waveCtx.lineWidth = 1.5;
-            waveCtx.beginPath();
-            for (let i = 0; i < totalFrames; i++) {
-                const val = waveformBuffer[(readStart + i) % (WAVEFORM_SECONDS * 60)] || 0;
-                const x = i * step;
-                const amp = val * mid * 0.9;
-                if (i === 0) waveCtx.moveTo(x, mid - amp);
-                else waveCtx.lineTo(x, mid - amp);
-            }
-            waveCtx.stroke();
-            waveCtx.beginPath();
-            for (let i = 0; i < totalFrames; i++) {
-                const val = waveformBuffer[(readStart + i) % (WAVEFORM_SECONDS * 60)] || 0;
-                const x = i * step;
-                const amp = val * mid * 0.9;
-                if (i === 0) waveCtx.moveTo(x, mid + amp);
-                else waveCtx.lineTo(x, mid + amp);
-            }
-            waveCtx.stroke();
-
-            const playX = w;
-            waveCtx.strokeStyle = "#111";
-            waveCtx.lineWidth = 2;
-            waveCtx.beginPath();
-            waveCtx.moveTo(playX, 0);
-            waveCtx.lineTo(playX, h);
-            waveCtx.stroke();
-            waveCtx.beginPath();
-            waveCtx.arc(playX, mid, 4, 0, Math.PI * 2);
-            waveCtx.fillStyle = "#111";
-            waveCtx.fill();
-        }
-
-        if (waveCanvas) {
-            waveCanvas.addEventListener("mousedown", (e) => {
-                if (!window.audioPlayer || !window.audioPlayer.src) return;
-                waveformDragging = true;
-                seekFromEvent(e);
-            });
-            window.addEventListener("mousemove", (e) => {
-                if (!waveformDragging) return;
-                seekFromEvent(e);
-            });
-            window.addEventListener("mouseup", () => { waveformDragging = false; });
-
-            function seekFromEvent(e) {
-                if (!window.audioPlayer) return;
-                const rect = waveCanvas.getBoundingClientRect();
-                const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-                const pct = x / rect.width;
-                window.audioPlayer.currentTime = pct * window.audioPlayer.duration;
-            }
-
-            window.addEventListener("resize", () => { if (waveCanvas.style.display === "block") resizeWaveCanvas(); });
-        }
 
         document.addEventListener("DOMContentLoaded", () => {
             loadProviders();
@@ -1043,21 +897,58 @@
             document.getElementById("char-count").textContent = t.length + " characters";
             const wc = t.trim() ? t.trim().split(/\s+/).length : 0;
             document.getElementById("word-count").textContent = wc + " words";
-            document.getElementById("collapsed-words").textContent = wc + " words";
-            document.getElementById("collapsed-lang").textContent = document.getElementById("lang-name").textContent;
         }
 
         // --- Collapse / Expand ---
         function collapseText() {
             const overlay = document.getElementById("text-overlay");
             overlay.classList.add("collapsed-bg");
-            document.getElementById("collapsed-lang").textContent = document.getElementById("lang-name").textContent;
-            const wc = document.getElementById("text-editor").value.trim();
-            document.getElementById("collapsed-words").textContent = (wc ? wc.split(/\s+/).length : 0) + " words";
+            const player = document.getElementById("audio-player");
+            const slot = document.getElementById("collapsed-audio-slot");
+            const collapsedLink = document.getElementById("download-link-collapsed");
+            const audioBar = document.getElementById("collapsed-audio-bar");
+            const emptyBar = document.getElementById("collapsed-empty-bar");
+            if (player && player.src && player.src !== location.href) {
+                audioBar.classList.add("has-audio");
+                emptyBar.classList.remove("no-audio");
+                slot.appendChild(player);
+                collapsedLink.href = player.src;
+            } else {
+                audioBar.classList.remove("has-audio");
+                emptyBar.classList.add("no-audio");
+            }
         }
         function expandText() {
             const overlay = document.getElementById("text-overlay");
             overlay.classList.remove("collapsed-bg");
+            const player = document.getElementById("audio-player");
+            const output = document.getElementById("output-section");
+            if (player && player.parentElement !== output) {
+                output.appendChild(player);
+            }
+        }
+        function toggleCollapsedPlay() {
+            const player = document.getElementById("audio-player");
+            if (!player || !player.src) return;
+            if (player.paused) player.play();
+            else player.pause();
+        }
+
+        function toggleCardExpand() {
+            const card = document.getElementById("floating-card");
+            if (card.classList.contains("hidden-state")) return;
+            card.classList.toggle("expanded");
+        }
+        function submitDirectText() {
+            const text = document.getElementById("direct-text-input").value.trim();
+            if (!text) return;
+            document.getElementById("floating-card").classList.add("hidden-state");
+            document.getElementById("text-editor").value = text;
+            updateCounts();
+            const overlay = document.getElementById("text-overlay");
+            overlay.classList.add("visible");
+            document.getElementById("settings-toggle").classList.add("visible");
+            loadVoices("en");
         }
 
         document.getElementById("text-overlay").addEventListener("click", (e) => {
@@ -1208,34 +1099,7 @@
                 if (!resp.ok) { alert(data.detail || "Generation failed"); return; }
                 const player = document.getElementById("audio-player");
                 player.src = data.audio_url;
-                document.getElementById("download-link").href = data.audio_url;
                 document.getElementById("output-section").classList.add("visible");
-
-                window.audioPlayer = player;
-
-                stopWaveformLoop();
-                initWaveform(player);
-                player.onplay = () => {
-                    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
-                    if (window.setVinylSpin) window.setVinylSpin(true);
-                    if (window.animateVinylToPlayer) window.animateVinylToPlayer();
-                    if (window.orbitControls) window.orbitControls.enabled = false;
-                    cameraTarget.pos.set(0, 2, 6);
-                    cameraTarget.lookAt.set(0, 0, 0);
-                    startWaveformLoop();
-                };
-                player.onpause = () => {
-                    if (window.setVinylSpin) window.setVinylSpin(false);
-                    if (window.orbitControls) window.orbitControls.enabled = true;
-                };
-                player.onended = () => {
-                    if (window.setVinylSpin) window.setVinylSpin(false);
-                    if (window.orbitControls) window.orbitControls.enabled = true;
-                    stopWaveformLoop();
-                    waveCanvas.style.display = "none";
-                    if (window.animateVinylToCenter) window.animateVinylToCenter();
-                };
-
                 player.play();
             } catch (e) { alert("Generation failed: " + e.message); }
             finally { btn.disabled = false; btn.innerHTML = 'Generate Audio <span class="chevron">&#8250;</span>'; }
