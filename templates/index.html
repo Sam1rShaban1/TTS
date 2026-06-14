@@ -451,19 +451,13 @@
         /* --- Generate / Output in card --- */
         .card-output { display: none; }
         .card-output.visible { display: block; margin-top: 12px; }
-        .card-output audio {
+        #waveform-canvas {
+            display: none;
             width: 100%;
-            height: 32px;
-            border-radius: 1.5px;
-            outline: none;
+            height: 80px;
+            border-radius: 20px;
+            cursor: crosshair;
         }
-        .card-output audio::-webkit-media-controls-panel { display: none; }
-        .card-output audio::-webkit-media-controls-enclosure { display: none; }
-        .card-output audio::-webkit-media-controls-play-button { display: none; }
-        .card-output audio::-webkit-media-controls-timeline { display: block !important; }
-        .card-output audio::-webkit-media-controls-volume-slider { display: none; }
-        .card-output audio::-webkit-media-controls-mute-button { display: none; }
-        .card-output audio::-webkit-media-controls-fullscreen-button { display: none; }
 
         /* --- Spinner --- */
         .spinner {
@@ -532,7 +526,8 @@
                 </button>
             </div>
             <div class="card-output" id="output-section">
-                <audio id="audio-player" controlsList="nodownload nodoplaybackrate"></audio>
+                <audio id="audio-player" controlsList="nodownload nodoplaybackrate" style="display:none;"></audio>
+                <canvas id="waveform-canvas"></canvas>
                 <div style="margin-top:8px;">
                     <a id="download-link" href="#" download class="btn-primary btn-sm" style="text-decoration:none;">
                         Download MP3 <span class="chevron">&#8250;</span>
@@ -833,6 +828,160 @@
         let providersData = [];
         let allVoicesCache = [];
 
+        // --- Web Audio API + Waveform ---
+        let audioCtx = null;
+        let analyser = null;
+        let sourceNode = null;
+        const WAVEFORM_SECONDS = 10;
+        const WAVEFORM_DOWNSAMPLE = 300;
+        let waveformBuffer = [];
+        let waveformWriteIdx = 0;
+        let waveformTotalFrames = 0;
+        let waveformAnimId = null;
+        let waveformDragging = false;
+        const waveCanvas = document.getElementById("waveform-canvas");
+        const waveCtx = waveCanvas ? waveCanvas.getContext("2d") : null;
+
+        function initWaveform(player) {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (analyser) return;
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 2048;
+            analyser.smoothingTimeConstant = 0.8;
+            sourceNode = audioCtx.createMediaElementSource(player);
+            sourceNode.connect(analyser);
+            analyser.connect(audioCtx.destination);
+        }
+
+        function resizeWaveCanvas() {
+            if (!waveCanvas) return;
+            const dpr = window.devicePixelRatio || 1;
+            const rect = waveCanvas.getBoundingClientRect();
+            waveCanvas.width = rect.width * dpr;
+            waveCanvas.height = rect.height * dpr;
+            waveCtx.scale(dpr, dpr);
+        }
+
+        function startWaveformLoop() {
+            if (waveformAnimId) return;
+            waveformBuffer = [];
+            waveformWriteIdx = 0;
+            waveformTotalFrames = 0;
+            waveCanvas.style.display = "block";
+            resizeWaveCanvas();
+            waveformAnimId = requestAnimationFrame(drawWaveform);
+        }
+
+        function stopWaveformLoop() {
+            if (waveformAnimId) { cancelAnimationFrame(waveformAnimId); waveformAnimId = null; }
+        }
+
+        function drawWaveform() {
+            waveformAnimId = requestAnimationFrame(drawWaveform);
+            if (!analyser || !window.audioPlayer) return;
+
+            const player = window.audioPlayer;
+            const bufLen = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufLen);
+
+            if (!player.paused) {
+                analyser.getByteTimeDomainData(dataArray);
+                let sum = 0;
+                for (let i = 0; i < bufLen; i++) sum += Math.abs(dataArray[i] - 128);
+                const avg = sum / bufLen / 128;
+                waveformBuffer[waveformWriteIdx] = avg;
+                waveformWriteIdx = (waveformWriteIdx + 1) % (WAVEFORM_SECONDS * 60);
+                if (waveformTotalFrames < WAVEFORM_SECONDS * 60) waveformTotalFrames++;
+            }
+
+            const rect = waveCanvas.getBoundingClientRect();
+            const w = rect.width;
+            const h = rect.height;
+            const mid = h / 2;
+
+            waveCtx.clearRect(0, 0, w, h);
+
+            const totalFrames = waveformTotalFrames;
+            if (totalFrames < 2) return;
+
+            const step = w / (WAVEFORM_SECONDS * 60);
+            const readStart = (waveformWriteIdx - totalFrames + WAVEFORM_SECONDS * 60 * 2) % (WAVEFORM_SECONDS * 60);
+
+            waveCtx.beginPath();
+            waveCtx.moveTo(0, mid);
+            for (let i = 0; i < totalFrames; i++) {
+                const val = waveformBuffer[(readStart + i) % (WAVEFORM_SECONDS * 60)] || 0;
+                const x = i * step;
+                const amp = val * mid * 0.9;
+                waveCtx.lineTo(x, mid - amp);
+            }
+            for (let i = totalFrames - 1; i >= 0; i--) {
+                const val = waveformBuffer[(readStart + i) % (WAVEFORM_SECONDS * 60)] || 0;
+                const x = i * step;
+                const amp = val * mid * 0.9;
+                waveCtx.lineTo(x, mid + amp);
+            }
+            waveCtx.closePath();
+            waveCtx.fillStyle = "rgba(17,17,17,0.6)";
+            waveCtx.fill();
+
+            waveCtx.strokeStyle = "#111";
+            waveCtx.lineWidth = 1.5;
+            waveCtx.beginPath();
+            for (let i = 0; i < totalFrames; i++) {
+                const val = waveformBuffer[(readStart + i) % (WAVEFORM_SECONDS * 60)] || 0;
+                const x = i * step;
+                const amp = val * mid * 0.9;
+                if (i === 0) waveCtx.moveTo(x, mid - amp);
+                else waveCtx.lineTo(x, mid - amp);
+            }
+            waveCtx.stroke();
+            waveCtx.beginPath();
+            for (let i = 0; i < totalFrames; i++) {
+                const val = waveformBuffer[(readStart + i) % (WAVEFORM_SECONDS * 60)] || 0;
+                const x = i * step;
+                const amp = val * mid * 0.9;
+                if (i === 0) waveCtx.moveTo(x, mid + amp);
+                else waveCtx.lineTo(x, mid + amp);
+            }
+            waveCtx.stroke();
+
+            const playX = w;
+            waveCtx.strokeStyle = "#111";
+            waveCtx.lineWidth = 2;
+            waveCtx.beginPath();
+            waveCtx.moveTo(playX, 0);
+            waveCtx.lineTo(playX, h);
+            waveCtx.stroke();
+            waveCtx.beginPath();
+            waveCtx.arc(playX, mid, 4, 0, Math.PI * 2);
+            waveCtx.fillStyle = "#111";
+            waveCtx.fill();
+        }
+
+        if (waveCanvas) {
+            waveCanvas.addEventListener("mousedown", (e) => {
+                if (!window.audioPlayer || !window.audioPlayer.src) return;
+                waveformDragging = true;
+                seekFromEvent(e);
+            });
+            window.addEventListener("mousemove", (e) => {
+                if (!waveformDragging) return;
+                seekFromEvent(e);
+            });
+            window.addEventListener("mouseup", () => { waveformDragging = false; });
+
+            function seekFromEvent(e) {
+                if (!window.audioPlayer) return;
+                const rect = waveCanvas.getBoundingClientRect();
+                const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+                const pct = x / rect.width;
+                window.audioPlayer.currentTime = pct * window.audioPlayer.duration;
+            }
+
+            window.addEventListener("resize", () => { if (waveCanvas.style.display === "block") resizeWaveCanvas(); });
+        }
+
         document.addEventListener("DOMContentLoaded", () => {
             loadProviders();
             setupDragDrop();
@@ -1064,11 +1213,16 @@
 
                 window.audioPlayer = player;
 
+                stopWaveformLoop();
+                initWaveform(player);
                 player.onplay = () => {
+                    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
                     if (window.setVinylSpin) window.setVinylSpin(true);
+                    if (window.animateVinylToPlayer) window.animateVinylToPlayer();
                     if (window.orbitControls) window.orbitControls.enabled = false;
                     cameraTarget.pos.set(0, 2, 6);
                     cameraTarget.lookAt.set(0, 0, 0);
+                    startWaveformLoop();
                 };
                 player.onpause = () => {
                     if (window.setVinylSpin) window.setVinylSpin(false);
@@ -1077,10 +1231,12 @@
                 player.onended = () => {
                     if (window.setVinylSpin) window.setVinylSpin(false);
                     if (window.orbitControls) window.orbitControls.enabled = true;
+                    stopWaveformLoop();
+                    waveCanvas.style.display = "none";
+                    if (window.animateVinylToCenter) window.animateVinylToCenter();
                 };
 
                 player.play();
-                if (window.animateVinylToPlayer) window.animateVinylToPlayer();
             } catch (e) { alert("Generation failed: " + e.message); }
             finally { btn.disabled = false; btn.innerHTML = 'Generate Audio <span class="chevron">&#8250;</span>'; }
         }
