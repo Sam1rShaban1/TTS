@@ -5,6 +5,8 @@ edge-tts
 PyMuPDF
 python-docx
 python-pptx
+openpyxl
+xlrd
 aiofiles
 langdetect
 litellm

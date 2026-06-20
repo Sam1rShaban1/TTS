@@ -544,6 +544,9 @@
                     <span id="lang-name" style="font-weight:800;">English</span>
                 </div>
                 <div style="display:flex;gap:6px;align-items:center;">
+                    <button id="clean-btn" onclick="cleanText()" class="btn-secondary btn-sm">
+                        Clean with LLM <span class="chevron">&#8250;</span>
+                    </button>
                     <button onclick="collapseText()" class="btn-secondary btn-sm" title="Collapse">
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M9 7.5L6 4.5L3 7.5" stroke="#2d2d2d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     </button>
@@ -584,7 +587,7 @@
                 <button onclick="event.stopPropagation();document.getElementById('file-input').click()" class="btn-primary btn-sm">
                     Browse <span class="chevron">&#8250;</span>
                 </button>
-                <input type="file" id="file-input" class="hidden" accept=".pdf,.docx,.pptx,.txt">
+                <input type="file" id="file-input" class="hidden" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt">
             </div>
             <textarea id="direct-text-input" class="direct-textarea" placeholder="Type or paste text here..." onclick="event.stopPropagation()"></textarea>
             <div class="expanded-actions" style="display:none;">
@@ -632,10 +635,6 @@
                     <select id="llm-model" disabled>
                         <option value="">Select provider</option>
                     </select>
-                </div>
-                <div class="s-field">
-                    <label>API Key</label>
-                    <input id="llm-api-key" type="password" placeholder="sk-...">
                 </div>
             </div>
 
@@ -857,7 +856,7 @@
 
         async function uploadFile(file) {
             const ext = "." + file.name.split(".").pop().toLowerCase();
-            if (![".pdf", ".docx", ".pptx", ".txt"].includes(ext)) {
+            if (![".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt"].includes(ext)) {
                 alert("Unsupported file type."); return;
             }
             document.getElementById("upload-zone").classList.add("hidden");
@@ -1003,7 +1002,6 @@
             if (!text.trim()) { alert("No text to clean"); return; }
             const pid = document.getElementById("llm-provider").value;
             const model = document.getElementById("llm-model").value;
-            const key = document.getElementById("llm-api-key").value;
             if (!pid || !model) { alert("Select an LLM provider and model in Settings"); return; }
             const btn = document.getElementById("clean-btn");
             btn.disabled = true;
@@ -1012,7 +1010,7 @@
                 const resp = await fetch("/api/clean", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ text, model, api_key: key, provider_id: pid }),
+                    body: JSON.stringify({ text, model, provider_id: pid }),
                 });
                 const data = await resp.json();
                 if (!resp.ok) { alert(data.detail || "Cleaning failed"); return; }

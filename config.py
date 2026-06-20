@@ -50,7 +50,7 @@ PROVIDERS = {
     "NVIDIA_API_KEY": {
         "name": "NVIDIA NIM",
         "models": [
-            ("nvidia_nim/meta/llama-3.3-70b-instruct", "Llama 3.3 70B"),
+            ("nvidia_nim/moonshotai/kimi-k2.6", "Kimi 2.6"),
         ],
     },
     "COHERE_API_KEY": {
@@ -88,22 +88,26 @@ def get_available_providers():
     for env_var, info in PROVIDERS.items():
         key = os.environ.get(env_var, "").strip()
         if key:
-            available.append({
-                "id": env_var,
-                "name": info["name"],
-                "models": [{"value": m[0], "label": m[1]} for m in info["models"]],
-            })
+            available.append(
+                {
+                    "id": env_var,
+                    "name": info["name"],
+                    "models": [{"value": m[0], "label": m[1]} for m in info["models"]],
+                }
+            )
 
     if os.environ.get("OLLAMA_ENABLED", "false").lower() == "true":
-        available.append({
-            "id": "OLLAMA",
-            "name": "Ollama (Local)",
-            "models": [
-                {"value": "ollama/llama3.1", "label": "Llama 3.1"},
-                {"value": "ollama/llama3.3", "label": "Llama 3.3"},
-                {"value": "ollama/mistral", "label": "Mistral"},
-            ],
-        })
+        available.append(
+            {
+                "id": "OLLAMA",
+                "name": "Ollama (Local)",
+                "models": [
+                    {"value": "ollama/llama3.1", "label": "Llama 3.1"},
+                    {"value": "ollama/llama3.3", "label": "Llama 3.3"},
+                    {"value": "ollama/mistral", "label": "Mistral"},
+                ],
+            }
+        )
 
     return available
 

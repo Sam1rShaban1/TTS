@@ -45,7 +45,7 @@ async def get_providers():
 
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
-    allowed = {".pdf", ".docx", ".pptx", ".txt"}
+    allowed = {".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt"}
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in allowed:
         raise HTTPException(400, f"Unsupported file type. Allowed: {', '.join(allowed)}")
@@ -86,7 +86,6 @@ async def clean_text(request: Request):
     body = await request.json()
     raw_text = body.get("text", "")
     model = body.get("model", "openai/gpt-4o-mini")
-    api_key = body.get("api_key", "")
     provider_id = body.get("provider_id", "")
 
     if not raw_text.strip():
@@ -96,9 +95,6 @@ async def clean_text(request: Request):
         raise HTTPException(400, "No LLM provider selected")
 
     try:
-        if api_key:
-            llm_provider.set_provider_key(provider_id, api_key)
-
         cleaned = await llm_provider.clean_text(raw_text, model)
         return {"cleaned_text": cleaned}
     except Exception as e:
@@ -120,9 +116,6 @@ async def ocr_extract(request: Request):
         raise HTTPException(400, "No LLM provider selected (vision-capable provider required for OCR)")
 
     try:
-        if api_key:
-            llm_provider.set_provider_key(provider_id, api_key)
-
         text = await llm_provider.ocr_extract(image_b64, model)
         return {"text": text}
     except Exception as e:
