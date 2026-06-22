@@ -51,6 +51,10 @@ PROVIDERS = {
         "name": "NVIDIA NIM",
         "models": [
             ("nvidia_nim/moonshotai/kimi-k2.6", "Kimi 2.6"),
+            ("nvidia_nim/minimaxai/minimax-m3", "MiniMax-M3"),
+            ("nvidia_nim/deepseek-ai/deepseek-v4-flash", "DeepSeek V4 Flash"),
+            ("nvidia_nim/z-ai/glm-5.1", "Z-AI GLM 5.1"),
+            ("nvidia_nim/google/gemma-4-31b-it", "Gemma 4 31B"),
         ],
     },
     "COHERE_API_KEY": {

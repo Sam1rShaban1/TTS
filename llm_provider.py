@@ -54,6 +54,16 @@ async def clean_text(raw_text: str, model: str) -> str:
                     "- Change any actual content, sentences, or meaning\n"
                     "- Summarize or rephrase anything\n"
                     "- Add or remove any sentences\n\n"
+                    "Example:\n"
+                    "Input:\n"
+                    "The quick brow-\n"
+                    "n fox jumps over the lazy dog. Page 12\n"
+                    "The quick brown fox jumps over the lazy dog.\n"
+                    "## Header ##\n"
+                    "T@he qui!ck bro$wn fox jumps ov@er the lazy dog.\n\n"
+                    "Output:\n"
+                    "The quick brown fox jumps over the lazy dog.\n"
+                    "The quick brown fox jumps over the lazy dog.\n\n"
                     "Return ONLY the cleaned text, nothing else."
                 ),
             },
